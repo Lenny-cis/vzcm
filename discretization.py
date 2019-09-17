@@ -13,7 +13,7 @@ import os
 from matplotlib import pyplot as plt
 from imp import reload
 
-os.chdir(r'H:\work\微众税银\C01 代码\W01 建模通用代码')
+os.chdir(r'E:\微众税银\C01 代码\W01_vzcm')
 import utils as ut
 reload(ut)
 

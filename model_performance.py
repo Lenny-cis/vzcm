@@ -16,7 +16,7 @@ import pandas as pd
 from sklearn.metrics import roc_curve, auc
 
 
-def calKS(y, pred):
+def gen_KS(y, pred):
     fpr, tpr, thrd = roc_curve(y, pred)
     eventNum = np.sum(y)
     allNum = len(y)
@@ -55,7 +55,7 @@ def plotROCKS(y, pred):
     xmajorLocator = matplotlib.ticker.MaxNLocator(6)
     xminorLocator = matplotlib.ticker.MaxNLocator(11)
     fpr, tpr, thrd = roc_curve(y, pred)
-    ks_stp, w, ksTile = calKS(y, pred)
+    ks_stp, w, ksTile = gen_KS(y, pred)
     auc_stp = auc(fpr, tpr)
     ks_x = fpr[w.argmax()]
     ks_y = tpr[w.argmax()]
@@ -93,3 +93,40 @@ def plotROCKS(y, pred):
     ax[1].yaxis.set_minor_locator(xminorLocator)
     ax[1].grid(alpha=0.5, which='minor')
     return fig
+
+
+def gen_gaintable(df, pred, y, bins=20, output=False):
+    t_df = df.loc[:, [pred, y]].query(y+' in([0, 1])')
+    t_df = t_df.sort_values(by=[pred], ascending=True)
+    t_df['range'] = range(len(t_df))
+    t_df['cut'] = pd.cut(t_df['range'], bins)
+    t_df['total'] = 1
+    total_bad_num = t_df[y].sum()
+    total_good_num = len(t_df)-total_bad_num
+    score_df = t_df.groupby(['cut'])[pred]\
+        .agg(min_score='min', max_score='max')
+    score_df = score_df.applymap(lambda x: round(x, 4))
+    score_df['score_range'] = score_df.apply(
+            lambda x: pd.Interval(x['min_score'], x['max_score']), axis=1)
+    num_df = t_df.groupby(['cut'])[y].agg(
+            bad_num='sum', total='count')
+    num_df['good_num'] = num_df['total']-num_df['bad_num']
+    num_df['bad_rate'] = num_df['bad_num']/num_df['total']
+    num_df['cum_bad'] = num_df['bad_num'].cumsum()
+    num_df['cum_num'] = num_df['total'].cumsum()
+    num_df['cum_good'] = num_df['cum_num'] - num_df['cum_bad']
+    num_df['cumbad_rate'] = num_df['cum_bad']/num_df['cum_num']
+    sample = score_df[['score_range']].merge(num_df, left_index=True,
+                                             right_index=True, how='left')
+    sample['gain'] = sample['cum_bad']/total_bad_num
+    sample['lift'] = sample['gain']/((sample['cum_num'])/(len(t_df)))
+    sample['ks'] = np.abs(
+            sample['cum_good']/total_good_num
+            - sample['cum_bad']/total_bad_num)
+    sample.set_index('score_range', inplace=True)
+    sample[['bad_rate', 'cumbad_rate', 'gain', 'lift', 'ks']] = sample[
+            ['bad_rate', 'cumbad_rate', 'gain', 'lift', 'ks']].applymap(
+            lambda x: round(x, 4))
+    if output:
+        sample.to_csv('gaintable.csv', index=None)
+    return sample
