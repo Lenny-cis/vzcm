@@ -95,9 +95,9 @@ def plotROCKS(y, pred):
     return fig
 
 
-def gen_gaintable(df, pred, y, bins=20, output=False):
+def gen_gaintable(df, pred, y, bins=20, prob=True, output=False):
     t_df = df.loc[:, [pred, y]].query(y+' in([0, 1])')
-    t_df = t_df.sort_values(by=[pred], ascending=True)
+    t_df = t_df.sort_values(by=[pred], ascending=not(prob))
     t_df['range'] = range(len(t_df))
     t_df['cut'] = pd.cut(t_df['range'], bins)
     t_df['total'] = 1
@@ -112,6 +112,7 @@ def gen_gaintable(df, pred, y, bins=20, output=False):
             bad_num='sum', total='count')
     num_df['good_num'] = num_df['total']-num_df['bad_num']
     num_df['bad_rate'] = num_df['bad_num']/num_df['total']
+    num_df.sort_index(ascending=True, inplace=True)
     num_df['cum_bad'] = num_df['bad_num'].cumsum()
     num_df['cum_num'] = num_df['total'].cumsum()
     num_df['cum_good'] = num_df['cum_num'] - num_df['cum_bad']
@@ -129,4 +130,5 @@ def gen_gaintable(df, pred, y, bins=20, output=False):
             lambda x: round(x, 4))
     if output:
         sample.to_csv('gaintable.csv', index=None)
-    return sample
+    return sample[['total', 'bad_num', 'bad_rate', 'cumbad_rate', 'gain',
+                   'ks', 'lift']]
