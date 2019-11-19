@@ -13,11 +13,12 @@ import matplotlib
 import matplotlib.pyplot as plt
 import statsmodels.stats as sms
 import pandas as pd
+import warnings
 from sklearn.metrics import roc_curve, auc
 
 
-def gen_KS(y, pred):
-    fpr, tpr, thrd = roc_curve(y, pred)
+def gen_KS(y, pred, pos_label=None):
+    fpr, tpr, thrd = roc_curve(y, pred, pos_label=pos_label)
     eventNum = np.sum(y)
     allNum = len(y)
     nonEventNum = allNum - eventNum
@@ -31,12 +32,17 @@ def calMcNemar(mat):
 
 
 def calIV(mat):
+    warnings.filterwarnings('ignore')
     magc = mat.sum(axis=0)
-    return ((mat[:, 1]/magc[1] - mat[:, 0]/magc[0])*np.log(
-            (mat[:, 1]/magc[1]) / (mat[:, 0]/magc[0]))).sum()
+    entropy = (mat[:, 1]/magc[1] - mat[:, 0]/magc[0])*np.log(
+            (mat[:, 1]/magc[1]) / (mat[:, 0]/magc[0]))
+    warnings.filterwarnings('default')
+    return np.nansum(np.where((entropy == np.inf) | (entropy == -np.inf),
+                              0, entropy))
 
 
-def calPSI(mat):
+def calPSI(base, new):
+    mat = pd.DataFrame({0: base, 1: new}).values
     return calIV(mat)
 
 
@@ -51,10 +57,10 @@ def genVIFSet(X):
     return pd.DataFrame({'Variable': X_names, 'VIF': vifl})
 
 
-def plotROCKS(y, pred):
+def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
     xmajorLocator = matplotlib.ticker.MaxNLocator(6)
     xminorLocator = matplotlib.ticker.MaxNLocator(11)
-    fpr, tpr, thrd = roc_curve(y, pred)
+    fpr, tpr, thrd = roc_curve(y, pred, pos_label=pos_label)
     ks_stp, w, ksTile = gen_KS(y, pred)
     auc_stp = auc(fpr, tpr)
     ks_x = fpr[w.argmax()]
@@ -87,7 +93,7 @@ def plotROCKS(y, pred):
     ax[1].plot([ks_p_x, ks_p_x], [ks_stp, 0], 'r--', linewidth=0.5)
     ax[1].text(ks_p_x, ks_stp/2, '  KS=%.5f' % ks_stp)
     ax[1].set(xlim=(0, 1), ylim=(0, 1), xlabel='Prop', ylabel='TPR/FPR',
-              title='KS')
+              title=ks_label+' KS')
     ax[1].xaxis.set_major_locator(xmajorLocator)
     ax[1].xaxis.set_minor_locator(xminorLocator)
     ax[1].yaxis.set_minor_locator(xminorLocator)

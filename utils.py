@@ -7,7 +7,6 @@ Created on Tue Aug 27 16:38:28 2019
 
 import numpy as np
 import pandas as pd
-from sklearn.utils import resample
 
 
 def is_shape_I(values):
@@ -168,73 +167,3 @@ def merge_PCT_zero(df, thrd_PCT=0.05, mthd='PCT'):
         else:
             s = 0
     return cross.append(df[df.index == -1])
-
-
-def calPSI(base, new):
-    base_PCT = base[list(base != 0)]/base.sum()
-    new_PCT = new[list(new != 0)]/new.sum()
-    sub = (base_PCT-new_PCT).dropna()
-    dev = np.log(base_PCT/new_PCT).dropna()
-    return (sub*dev).sum()
-
-
-def gen_bootstrap_sample(sample, random=0):
-    bootstrap = resample(sample, n_samples=len(sample), random_state=random)
-    oob = sample[~sample.index.isin(bootstrap.index)]
-    return bootstrap, oob
-
-
-def ser_group(ser, cut, prec=5):
-    bin_ser = pd.cut(ser, cut, precision=prec)
-    group = bin_ser.value_counts()
-    group.index = group.index.astype('O')
-    return group
-
-
-def var_PSI(base_ser, new_ser, n=10, mthd='eqqt', prec=5):
-    var = base_ser.name
-    base_nona = base_ser.dropna()
-    base_na = pd.Series(len(base_ser)-len(base_nona), index=[-1])
-    new_nona = new_ser.dropna()
-    new_na = pd.Series(len(new_ser)-len(new_nona), index=[-1])
-    cut = gen_cut(base_nona, n=n, mthd=mthd, prec=prec)
-    if cut in ['MTHD ERROR', 'N_CUT ERROR']:
-        return var
-    base_group = ser_group(base_nona, cut, prec=prec)
-    if len(base_na) > 0:
-        base_group = base_group.append(base_na)
-    new_group = ser_group(new_nona, cut, prec=prec)
-    if len(new_na) > 0:
-        new_group = new_group.append(new_na)
-    return pd.Series(calPSI(base_group, new_group), index=[var])
-
-
-def sample_PSI(base_df, new_df, n=10, mthd='eqqt', prec=5):
-    var_names = base_df.columns
-    vars_PSI = pd.Series()
-    for var in var_names:
-        PSI = var_PSI(base_df[var], new_df[var], n=n, mthd=mthd, prec=prec)
-        if type(PSI).__name__ != 'str':
-            vars_PSI = vars_PSI.append(PSI)
-    return vars_PSI
-
-
-def exclude_one_value(df):
-    drop_vars = []
-    for v in df.columns:
-        n_value = len(df[v].dropna().unique())
-        if n_value == 1:
-            drop_vars.append(v)
-    return df[list(set(df.columns)-set(drop_vars))], drop_vars
-
-
-def bootstrapping_byPSI(sample, n=10, prec=5, mthd='eqqt', thrd=0.02):
-    s = 1
-    while s:
-        i = np.random.randint(10000)
-        boot_sample, oob_sample = gen_bootstrap_sample(sample, random=i)
-        PSI = sample_PSI(boot_sample, oob_sample, n=n, mthd=mthd, prec=prec)
-        if (PSI < thrd).all():
-            s = 0
-            break
-    return boot_sample, oob_sample, i
