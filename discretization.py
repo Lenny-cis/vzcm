@@ -93,6 +93,7 @@ class Discretization:
                     setattr(getattr(self, subName), 'values', values)
                     detail, IV = ut.cal_WOE_IV(merged)
                     WOEDict = detail['WOE'].to_dict()
+                    print(merged)
                     chi, p, dof, expFreq =\
                         sps.chi2_contingency(merged.values,
                                              correction=False)
@@ -196,22 +197,27 @@ class Discretization:
             self.bestC = getattr(self, min_sub)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+def vars_discrete(df, dep_var='FLAG', n_cut=50, I_min=3, U_min=4,
+                  cut_mthd='eqqt', suffix='raw_bins_', thrd_PCT=0.03,
+                  max_bins=6, prior_shape=None, prec=5):
+    if prior_shape is not None:
+        names = list(set(df.columns)-set(dep_var) & set(prior_shape['VAR']))
+    else:
+        names = list(set(df.columns)-set(dep_var))
+    i = 0
+    n = len(names)
+    for name in names:
+        i += 1
+        if prior_shape is not None:
+            prior = prior_shape.query('VAR=="'+name+'"').loc[:, 'SHAPE'][0]
+        else:
+            prior = np.nan
+        print('%d/%d %s %s' % (i, n, name, prior))
+        globals()[name] = Discretization(
+                df, col_var=name, dep_var=dep_var, n_cut=n_cut, I_min=I_min,
+                U_min=U_min, cut_mthd=cut_mthd, suffix=suffix,
+                thrd_PCT=thrd_PCT, max_bins=max_bins, prior_shape=prior,
+                prec=prec)
+        globals()[name].gen_cross()
+        globals()[name].gen_comb()
+        globals()[name].select_global_best()

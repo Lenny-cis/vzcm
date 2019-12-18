@@ -14,15 +14,11 @@ from utils import gen_cut
 from model_performance import calPSI
 
 
-def gen_bootstrap_sample(sample_x, sample_y=None, random=0):
-    bootstrap_x = resample(sample_x, n_samples=len(sample_x),
-                           random_state=random)
-    oob_x = sample_x.reindex(sample_x.index.difference(bootstrap_x.index))
-    if sample_y is None:
-        return bootstrap_x, oob_x
-    bootstrap_y = sample_y.reindex(bootstrap_x.index)
-    oob_y = sample_y.reindex(oob_x.index)
-    return bootstrap_x, oob_x, bootstrap_y, oob_y
+def gen_bootstrap_sample(sample, dep_var='FLAG', random=0):
+    bootstrap = resample(sample, n_samples=len(sample),
+                         random_state=random)
+    oob = sample.reindex(sample.index.difference(bootstrap.index))
+    return bootstrap, oob
 
 
 def ser_group(ser, cut, prec=5):
@@ -44,8 +40,8 @@ def var_PSI(base_ser, new_ser, n=10, mthd='eqqt', prec=5):
     return pd.Series(calPSI(base_group, new_group), index=[var])
 
 
-def sample_PSI(base_df, new_df, n=10, mthd='eqqt', prec=5):
-    var_names = base_df.columns
+def sample_PSI(base_df, new_df, dep_var='FLAG', n=10, mthd='eqqt', prec=5):
+    var_names = list(set(base_df.columns)-set(list(dep_var)))
     vars_PSI = pd.Series()
     for var in var_names:
         PSI = var_PSI(base_df[var], new_df[var], n=n, mthd=mthd, prec=prec)
@@ -63,18 +59,17 @@ def exclude_one_value(df):
     return df[list(set(df.columns)-set(drop_vars))], drop_vars
 
 
-def bootstrapping_byPSI(sample_x, sample_y, n=10,
+def bootstrapping_byPSI(sample, dep_var='FLAG', n=10,
                         prec=5, mthd='eqqt', thrd=0.01):
     s = 1
     print('min_psi|mean_psi|max_psi')
     while s:
         i = np.random.randint(10000)
-        boot_x, oob_x = gen_bootstrap_sample(sample_x, random=i)
-        PSI = sample_PSI(boot_x, oob_x, n=n, mthd=mthd, prec=prec)
+        boot, oob = gen_bootstrap_sample(sample, dep_var=dep_var, random=i)
+        PSI = sample_PSI(boot, oob, dep_var=dep_var,
+                         n=n, mthd=mthd, prec=prec)
         print(' %.4f|  %.4f| %.4f' % (PSI.min(), PSI.mean(), PSI.max()))
         if (PSI < thrd).all():
             s = 0
-            boot_x, oob_x, boot_y, oob_y =\
-                gen_bootstrap_sample(sample_x, sample_y, random=i)
             break
-    return boot_x, oob_x, boot_y, oob_y, i
+    return boot, oob, i

@@ -71,7 +71,7 @@ def bad_rate_shape(df, I_min, U_min):
 
 def gen_cut(ser, n=10, mthd='eqqt', prec=5):
     rcut = list(sorted(ser.dropna().unique()))
-    if len(rcut) == 1:
+    if len(rcut) <= 1:
         return 'N_CUT ERROR'
     if mthd == 'eqqt':
         cut = list(pd.qcut(ser, n, retbins=True,
@@ -86,6 +86,21 @@ def gen_cut(ser, n=10, mthd='eqqt', prec=5):
     cut.insert(0, -np.inf)
     cut.append(np.inf)
     return cut
+
+
+def gen_cross(df, col_var, dep_var, cut, prec=5):
+    t_df = df.copy(deep=True)
+    t_df[col_var] = pd.cut(t_df[col_var], cut, precision=prec,
+                           duplicates='drop', labels=False)
+    cross = t_df.groupby([col_var, dep_var], as_index=False).size().unstack()
+    allsize = t_df.groupby([dep_var]).size()
+    na_cross = pd.DataFrame({0: np.nansum([allsize[0], -cross.sum()[0]]),
+                             1: np.nansum([allsize[1], -cross.sum()[1]])},
+                            index=[-1])
+    cross.index = cross.index.astype('O')
+    cross = cross.append(na_cross)
+    cross.fillna(0, inplace=True)
+    return cross
 
 
 def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
@@ -104,7 +119,7 @@ def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
     return cross
 
 
-def cal_WOE_IV(df):
+def cal_WOE_IV(df, modify=True):
     cross = df.values
     col_margin = cross.sum(axis=0)
     row_margin = cross.sum(axis=1)
@@ -115,7 +130,8 @@ def cal_WOE_IV(df):
                  / np.where(non_event_prop == 0, 0.0005, non_event_prop))
     WOE[event_rate == 0] = np.min(WOE[(event_rate != 0) & (df.index != -1)])
     WOE[event_rate == 1] = np.max(WOE[(event_rate != 1) & (df.index != -1)])
-    WOE[df.index == -1] = max(WOE[df.index == -1], 0)
+    if modify is True:
+        WOE[df.index == -1] = max(WOE[df.index == -1], 0)
     IV = np.where(event_rate == 1, 0, (event_prop-non_event_prop)*WOE)
     return pd.DataFrame({'All': row_margin, 'eventRate': event_rate,
                          'WOE': WOE.round(4), 'IV': IV}, index=df.index),\
