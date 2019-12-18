@@ -209,7 +209,7 @@ def vars_discrete(df, dep_var='FLAG', n_cut=50, I_min=3, U_min=4,
     for name in names:
         i += 1
         if prior_shape is not None:
-            prior = prior_shape.query('VAR=="'+name+'"').loc[:, 'SHAPE'][0]
+            prior = prior_shape.query('VAR=="'+name+'"')['SHAPE'].iloc[0]
         else:
             prior = np.nan
         print('%d/%d %s %s' % (i, n, name, prior))
