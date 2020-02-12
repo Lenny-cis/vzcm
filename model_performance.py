@@ -18,10 +18,18 @@ from sklearn.metrics import roc_curve, auc
 
 
 def gen_KS(y, pred, pos_label=None):
+    '''
+    生成KS及KS曲线相应元素
+    input
+        y           实际flag
+        pred        预测分数
+        pos_label   标签被认为是响应，其他作为非响应
+    '''
     fpr, tpr, thrd = roc_curve(y, pred, pos_label=pos_label)
     eventNum = np.sum(y)
     allNum = len(y)
     nonEventNum = allNum - eventNum
+    # KS对应的x点
     ksTile = (eventNum*tpr + nonEventNum*fpr)/allNum
     return np.max(tpr - fpr), tpr - fpr, ksTile
 
@@ -32,6 +40,9 @@ def calMcNemar(mat):
 
 
 def calIV(mat):
+    '''
+    计算IV值，输入矩阵
+    '''
     warnings.filterwarnings('ignore')
     magc = mat.sum(axis=0)
     entropy = (mat[:, 1]/magc[1] - mat[:, 0]/magc[0])*np.log(
@@ -42,11 +53,17 @@ def calIV(mat):
 
 
 def calPSI(base, new):
+    '''
+    计算PSI，输入两个序列
+    '''
     mat = pd.DataFrame({0: base, 1: new}).values
     return calIV(mat)
 
 
 def genVIFSet(X):
+    '''
+    计算数据集所有变量的VIF
+    '''
     X_names = X.columns
     X_val = X.values
     ncol = len(X_names)
@@ -58,6 +75,10 @@ def genVIFSet(X):
 
 
 def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
+    '''
+    画ROC曲线及KS曲线
+    '''
+    # 调整主次坐标轴
     xmajorLocator = matplotlib.ticker.MaxNLocator(6)
     xminorLocator = matplotlib.ticker.MaxNLocator(11)
     fpr, tpr, thrd = roc_curve(y, pred, pos_label=pos_label)
@@ -66,6 +87,7 @@ def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
     ks_x = fpr[w.argmax()]
     ks_y = tpr[w.argmax()]
     fig, ax = plt.subplots(1, 2, figsize=(12, 5), tight_layout=True)
+    # 画ROC曲线
     ax[0].plot(fpr, tpr, 'r-', label='AUC=%.5f' % auc_stp, linewidth=0.5)
     ax[0].plot([0, 1], [0, 1], '-', color=(0.6, 0.6, 0.6), linewidth=0.5)
     ax[0].plot([ks_x, ks_x], [ks_x, ks_y], 'r--', linewidth=0.5)
@@ -78,6 +100,7 @@ def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
     ax[0].fill_between(fpr, tpr, color='red', alpha=0.1)
     ax[0].legend()
     ax[0].grid(alpha=0.5, which='minor')
+    # 画KS曲线
     ax[1].set_title('KS')
     allNum = len(y)
     eventNum = np.sum(y)
@@ -102,6 +125,11 @@ def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
 
 
 def gen_gaintable(df, pred, y, bins=20, prob=True, output=False):
+    '''
+    生成gaintable
+    input
+        df              数据集，原始数据
+    '''
     t_df = df.loc[:, [pred, y]].query(y+' in([0, 1])')
     t_df = t_df.sort_values(by=[pred], ascending=not(prob))
     t_df['range'] = range(len(t_df))
