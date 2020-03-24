@@ -124,26 +124,26 @@ def plotROCKS(y, pred, ks_label='MODEL', pos_label=None):
     return fig
 
 
-def gen_gaintable(df, pred, y, bins=20, prob=True, output=False):
+def gen_gaintable(pred, y, bins=20, prob=True, output=False):
     '''
     生成gaintable
     input
         df              数据集，原始数据
     '''
-    t_df = df.loc[:, [pred, y]].query(y+' in([0, 1])')
-    t_df = t_df.sort_values(by=[pred], ascending=not(prob))
+    t_df = pd.DataFrame({'pred': pred, 'flag': y})
+    t_df = t_df.sort_values(by=['pred'], ascending=not(prob))
     t_df['range'] = range(len(t_df))
     t_df['cut'] = pd.cut(t_df['range'], bins)
     t_df['total'] = 1
-    total_bad_num = t_df[y].sum()
+    total_bad_num = t_df['flag'].sum()
     total_good_num = len(t_df)-total_bad_num
-    score_df = t_df.groupby(['cut'])[pred]\
-        .agg(min_score='min', max_score='max')
+    score_df = t_df.groupby(['cut'])['pred']\
+        .agg({'min_score': 'min', 'max_score': 'max'})
     score_df = score_df.applymap(lambda x: round(x, 4))
     score_df['score_range'] = score_df.apply(
             lambda x: pd.Interval(x['min_score'], x['max_score']), axis=1)
-    num_df = t_df.groupby(['cut'])[y].agg(
-            bad_num='sum', total='count')
+    num_df = t_df.groupby(['cut'])['flag'].agg(
+            {'bad_num': 'sum', 'total': 'count'})
     num_df['good_num'] = num_df['total']-num_df['bad_num']
     num_df['bad_rate'] = num_df['bad_num']/num_df['total']
     num_df.sort_index(ascending=True, inplace=True)
@@ -158,11 +158,19 @@ def gen_gaintable(df, pred, y, bins=20, prob=True, output=False):
     sample['ks'] = np.abs(
             sample['cum_good']/total_good_num
             - sample['cum_bad']/total_bad_num)
-    sample.set_index('score_range', inplace=True)
     sample[['bad_rate', 'cumbad_rate', 'gain', 'lift', 'ks']] = sample[
             ['bad_rate', 'cumbad_rate', 'gain', 'lift', 'ks']].applymap(
             lambda x: round(x, 4))
     if output:
-        sample.to_csv('gaintable.csv', index=None)
-    return sample[['total', 'bad_num', 'bad_rate', 'cumbad_rate', 'gain',
-                   'ks', 'lift']]
+        sample.to_csv(r'gaintable.csv')
+    return sample[['score_range', 'total', 'bad_num', 'bad_rate',
+                   'cumbad_rate', 'gain', 'ks', 'lift']]
+
+
+def plotlift(df, title):
+    f, ax = plt.subplots(figsize=(12, 9), tight_layout=True)
+    ax.bar(range(len(df.index)), df['bad_num'])
+    ax2 = ax.twinx()
+    ax2.plot(range(len(df.index)), df['lift'], color='r')
+    ax.set_xticklabels(df.index, rotation=45)
+    ax.set_title(title)

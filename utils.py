@@ -324,6 +324,8 @@ def obtainNonRelativeFeats(corrDf, varsDic, thred=0.6):
     # 保留阈值以上的变量系数
     t_df = corrDf.copy()
     t_df = t_df[abs(t_df) > thred]
+    if len(t_df) == 0:
+        return list(corrDf.index)
     s = 1
     corrFeats = []
     # 选择一个变量开始遍历，初始化最大IV

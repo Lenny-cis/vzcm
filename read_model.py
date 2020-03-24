@@ -26,6 +26,7 @@ class VZ_model:
         pj = pd.read_excel(file, sheet_name='模型分数划分', header=4)
         scorecard = pd.read_excel(file, sheet_name='评分卡')
 
+        scorecard.iloc[:, 0] = scorecard.iloc[:, 0].str.upper()
         scorecard.iloc[:, 2].replace('low', -np.inf, inplace=True)
         scorecard.iloc[:, 2].replace('missing', np.nan, inplace=True)
         scorecard.iloc[:, 3].replace('high', np.inf, inplace=True)

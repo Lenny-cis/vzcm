@@ -12,7 +12,7 @@ import scipy.stats as sps
 import os
 from matplotlib import pyplot as plt
 
-os.chdir(r'E:\微众税银\C01 代码\W01_vzcm')
+os.chdir(r'D:\微众税银\C01 代码\W01_vzcm')
 import utils as utl
 
 
