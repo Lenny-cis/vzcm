@@ -10,9 +10,7 @@ import pandas as pd
 
 
 def is_shape_I(values):
-    '''
-    判断输入的列表/序列是否为单调递增
-    '''
+    """判断输入的列表/序列是否为单调递增."""
     if np.array([values[i] < values[i+1]
                 for i in range(len(values)-1)]).all():
         return True
@@ -20,9 +18,7 @@ def is_shape_I(values):
 
 
 def is_shape_D(values):
-    '''
-    判断输入的列表/序列是否为单调递减
-    '''
+    """判断输入的列表/序列是否为单调递减."""
     if np.array([values[i] > values[i+1]
                 for i in range(len(values)-1)]).all():
         return True
@@ -30,9 +26,7 @@ def is_shape_D(values):
 
 
 def is_shape_U(values):
-    '''
-    判断输入的列表/序列是否为先单调递减后单调递增
-    '''
+    """判断输入的列表/序列是否为先单调递减后单调递增."""
     if not (is_shape_I(values) and is_shape_D(values)):
         knee = np.argmin(values)
         if is_shape_D(values[: knee+1]) and is_shape_I(values[knee:]):
@@ -41,9 +35,7 @@ def is_shape_U(values):
 
 
 def is_shape_A(self, values):
-    '''
-    判断输入的列表/序列是否为先单调递增后单调递减
-    '''
+    """判断输入的列表/序列是否为先单调递增后单调递减."""
     if not (is_shape_I(values) and is_shape_D(values)):
         knee = np.argmax(values)
         if is_shape_I(values[: knee+1]) and is_shape_D(values[knee:]):
@@ -52,17 +44,16 @@ def is_shape_A(self, values):
 
 
 def gen_badrate(df):
-    '''
-    输入bin和[0, 1]的列联表，生成badrate
-    '''
+    """输入bin和[0, 1]的列联表，生成badrate."""
     return df.values[:, 1]/df.values.sum(axis=1)
 
 
 def slc_min_dist(df):
-    '''
-    选取最小距离
+    """
+    选取最小距离.
+
     计算上下两个bin之间的距离，计算原理参考用惯量类比距离的wald法聚类计算方式
-    '''
+    """
     R_margin = df.sum(axis=1)
     C_margin = df.sum(axis=0)
     n = df.sum().sum()
@@ -76,9 +67,7 @@ def slc_min_dist(df):
 
 
 def bad_rate_shape(df, I_min, U_min):
-    '''
-    判断badrate的单调性，限制了单调的最小个数，U形的最小个数
-    '''
+    """判断badrate的单调性，限制了单调的最小个数，U形的最小个数."""
     n = len(df)
     badRate = gen_badrate(df[df.index != -1])
     if (n >= I_min):
@@ -96,8 +85,9 @@ def bad_rate_shape(df, I_min, U_min):
 
 
 def gen_cut(ser, n=10, mthd='eqqt', prec=5):
-    '''
-    输入序列、切点个数、切分方式、精度生成切点。
+    """
+    输入序列、切点个数、切分方式、精度生成切点.
+
     若序列中只有一个值，返回字符串"N_CUT ERROR"
     input
         ser         序列
@@ -107,7 +97,7 @@ def gen_cut(ser, n=10, mthd='eqqt', prec=5):
             eqdist  等距
             categ   有序分类变量
         prec        切分精度
-    '''
+    """
     rcut = list(sorted(ser.dropna().unique()))
     if len(rcut) <= 1:
         return 'N_CUT ERROR'
@@ -137,15 +127,16 @@ def gen_cut(ser, n=10, mthd='eqqt', prec=5):
 
 
 def gen_cross(df, col_var, dep_var, cut, prec=5):
-    '''
-    生成列联表
+    """
+    生成列联表.
+
     input
         df          原始数据，原值
         col_var     待切分变量
         dep_var     应变量
         cut         切点
         prec        精度
-    '''
+    """
     # 切分后返回bin[0, 1, ...]
     t_df = df.copy(deep=True)
     t_df[col_var] = pd.cut(t_df[col_var], cut, precision=prec,
@@ -163,8 +154,9 @@ def gen_cross(df, col_var, dep_var, cut, prec=5):
 
 
 def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
-    '''
-    根据切点个数和切分方法生成列联表
+    """
+    根据切点个数和切分方法生成列联表.
+
     input
         df          原始数据，原值
         col_var     待切分变量
@@ -172,7 +164,7 @@ def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
         n           切点个数
         mthd        切分方式，参考gen_cut方法
         prec        精度
-    '''
+    """
     # 生成原始切点
     t_df = df.copy(deep=True)
     cut = gen_cut(t_df[col_var], n=n, mthd=mthd, prec=prec)
@@ -197,15 +189,16 @@ def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
 
 
 def cal_WOE_IV(df, modify=True):
-    '''
-    计算WOE、IV及分箱细节
+    """
+    计算WOE、IV及分箱细节.
+
     input
         df          bin和[0, 1]的列联表
         modify      是否调整缺失组的WOE值
             调整逻辑：将缺失组的WOE限制在除缺失组以外的WOE上下限范围内，保证模型稳定
                      若缺失组的WOE最大，则调整为非缺失组的最大值
                      若缺失组的WOE最小，则调整为0
-    '''
+    """
     cross = df.values
     col_margin = cross.sum(axis=0)
     row_margin = cross.sum(axis=1)
@@ -232,13 +225,14 @@ def cal_WOE_IV(df, modify=True):
 
 
 def merge_bin(df, idxlist, cut):
-    '''
-    合并分箱，返回合并后的列联表和切点，合并过程中不会改变缺失组，向下合并的方式
+    """
+    合并分箱，返回合并后的列联表和切点，合并过程中不会改变缺失组，向下合并的方式.
+
     input
         df          bin和[0, 1]的列联表
         idxlist     需要合并的箱的索引，列表格式
         cut         原始切点
-    '''
+    """
     cross = df[df.index != -1].copy(deep=True).values
     cols = df.columns
     # 倒序循环需合并的列表，正序会导致表索引改变，合并出错
@@ -254,8 +248,9 @@ def merge_bin(df, idxlist, cut):
 
 
 def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
-    '''
-    合并个数为0和占比过低的箱，不改变缺失组的结果
+    """
+    合并个数为0和占比过低的箱，不改变缺失组的结果.
+
     input
         df          bin和[0, 1]的列联表
         cut         原始切点
@@ -263,7 +258,7 @@ def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
         mthd        合并方法
             PCT     合并占比过低的箱
             zero    合并个数为0的箱
-    '''
+    """
     cross = df[df.index != -1].copy(deep=True)
     s = 1
     while s:
@@ -313,14 +308,14 @@ def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
 
 
 def obtainNonRelativeFeats(corrDf, varsDic, thred=0.6):
-    '''
-    处理共线性问题，通过比较相关性高的成对变量的IV值，挑选成对变量中的一个，
-    两两相关的成对变量会形成一连串的变量集，在这些变量集中挑选一个IV最高的变量。
+    """
+    处理共线性问题，通过比较相关性高的成对变量的IV值，挑选成对变量中的一个,两两相关的成对变量会形成一连串的变量集，在这些变量集中挑选一个IV最高的变量.
+
     input
         corrDf          相关系数矩阵
         varsDic         变量IV集
         thred           相关系数阈值
-    '''
+    """
     # 保留阈值以上的变量系数
     t_df = corrDf.copy()
     t_df = t_df[abs(t_df) > thred]
