@@ -84,7 +84,7 @@ def bad_rate_shape(df, I_min, U_min):
     return np.nan
 
 
-def gen_cut(ser, n=10, mthd='eqqt', prec=5):
+def gen_cut(ser, n=10, mthd='eqqt'):
     """
     输入序列、切点个数、切分方式、精度生成切点.
 
@@ -112,11 +112,11 @@ def gen_cut(ser, n=10, mthd='eqqt', prec=5):
     else:
         if mthd == 'eqqt':
             cut = list(pd.qcut(ser, n, retbins=True,
-                               precision=prec, duplicates='drop')[1])
+                               duplicates='drop')[1].round(4))
 
         elif mthd == 'eqdist':
             cut = list(pd.cut(ser, n, retbins=True,
-                              precision=prec, duplicates='drop')[1])
+                              duplicates='drop')[1].round(4))
 
         else:
             return 'MTHD ERROR'
@@ -126,7 +126,7 @@ def gen_cut(ser, n=10, mthd='eqqt', prec=5):
     return cut
 
 
-def gen_cross(df, col_var, dep_var, cut, prec=5):
+def gen_cross(df, col_var, dep_var, cut, prec=5, vtype=None):
     """
     生成列联表.
 
@@ -139,10 +139,11 @@ def gen_cross(df, col_var, dep_var, cut, prec=5):
     """
     # 切分后返回bin[0, 1, ...]
     t_df = df.copy(deep=True)
-    t_df[col_var] = pd.cut(t_df[col_var], cut, precision=prec,
-                           duplicates='drop', labels=False)
+    if vtype != 'categ':
+        t_df[col_var] = pd.cut(t_df[col_var], cut, precision=prec,
+                               duplicates='drop', labels=False)
     # 生成列联表
-    cross = t_df.groupby([col_var, dep_var], as_index=False).size().unstack()
+    cross = t_df.groupby([col_var, dep_var]).size().unstack()
     allsize = t_df.groupby([dep_var]).size()
     # 生成缺失组，索引为-1
     na_cross = pd.DataFrame({0: np.nansum([allsize[0], -cross.sum()[0]]),
@@ -153,7 +154,7 @@ def gen_cross(df, col_var, dep_var, cut, prec=5):
     return cross
 
 
-def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
+def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', vtype=None):
     """
     根据切点个数和切分方法生成列联表.
 
@@ -167,13 +168,25 @@ def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
     """
     # 生成原始切点
     t_df = df.copy(deep=True)
-    cut = gen_cut(t_df[col_var], n=n, mthd=mthd, prec=prec)
-    if type(cut).__name__ != 'list':
-        return None, cut
-    # 切分后返回bin[0, 1, ...]
-    t_df[col_var] = pd.cut(t_df[col_var], cut, labels=False,
-                           precision=prec, duplicates='drop')
-    cross = t_df.groupby([col_var, dep_var], as_index=False).size().unstack()
+    if vtype != 'categ':
+        cut = gen_cut(t_df[col_var], n=n, mthd=mthd)
+        if type(cut).__name__ != 'list':
+            return None, cut
+        # 切分后返回bin[0, 1, ...]
+        t_df[col_var] = pd.cut(t_df[col_var], cut, labels=False,
+                               duplicates='drop')
+        cross = t_df.groupby([col_var, dep_var]).size().unstack()
+        categ_cut = None
+    else:
+        cross = t_df.groupby([col_var, dep_var]).size().unstack()
+        cross['eventRate'] = cross[1]/np.nansum(cross, axis=1)
+        cross.sort_values('eventRate', ascending=False, inplace=True)
+        cross.drop(['eventRate'], inplace=True, axis=1)
+        categ_cut = list(cross.index)
+        cross.reset_index(inplace=True, drop=True)
+        cut = list(cross.index)
+        cut.insert(0, -np.inf)
+        cut.append(np.inf)
     # 调整切点生成下限
     t_cut = [cut[int(x+1)] for x in cross.index]
     t_cut.insert(0, -np.inf)
@@ -185,7 +198,7 @@ def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', prec=5):
     cross.reset_index(inplace=True, drop=True)
     cross = cross.append(na_cross)
     cross.fillna(0, inplace=True)
-    return cross, t_cut
+    return cross, t_cut, categ_cut
 
 
 def cal_WOE_IV(df, modify=True):

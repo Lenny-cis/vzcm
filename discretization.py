@@ -11,15 +11,14 @@ import itertools as its
 import scipy.stats as sps
 import os
 from matplotlib import pyplot as plt
-
-os.chdir(r'D:\微众税银\C01 代码\W01_vzcm')
 import utils as utl
 
 
 class Discretization:
-    '''
-    卡方分箱，可用全局最优和局部最优方法，若变量是有序分类变量，则I_min最小为2，
-    U_min最小为3。
+    """
+    卡方分箱，可用全局最优和局部最优方法.
+
+    若变量是有序分类变量，则I_min最小为2，U_min最小为3。
     返回一个类，类属性有categories，表示分箱方法的种数
     应用select_global_best方法后增加类属性，best、bestU、bestI、bestD，
     分别对应最优分类的可能形状，最优的U形分类可能的箱数，最优递增分类可能的箱数，
@@ -42,10 +41,10 @@ class Discretization:
         max_bins    分箱最大箱数
         prior_shape 变量形状
         prec        精度
-    '''
+    """
     def __init__(self, df, col_var, dep_var='FLAG', n_cut=50, I_min=3,
                  U_min=4, cut_mthd='eqqt', suffix='raw_bins_', var_type=None,
-                 thrd_PCT=0.03, max_bins=6, prior_shape=np.nan, prec=5):
+                 thrd_PCT=0.03, max_bins=6, prior_shape=np.nan):
         self.df = df.loc[:, [col_var, dep_var]]
         self.dep_var = dep_var
         self.var_type = var_type
@@ -63,22 +62,22 @@ class Discretization:
         self.thrd_PCT = thrd_PCT
         self.max_bins = max_bins
         self.prior_shape = prior_shape
-        self.prec = prec
 
     def gen_cross(self):
-        '''
+        """
         生成列联表，并对列联表做最低占比阈值和个数为0的合并
-        '''
+        """
         df = self.df.copy(deep=True)
-        cross, cut = utl.gen_cut_cross(
+        cross, cut, categ_cut = utl.gen_cut_cross(
                 df, self.col_var, self.dep_var, n=self.n_cut,
-                mthd=self.cut_mthd, prec=self.prec)
+                mthd=self.cut_mthd, vtype=self.var_type)
         if type(cut).__name__ == 'list':
             cross, cut = utl.merge_PCT_zero(cross, cut)
             cross, cut = utl.merge_PCT_zero(
                     cross, cut, thrd_PCT=self.thrd_PCT, mthd='zero')
         self.cross = cross
         self.orig_cut = cut
+        self.categ_cut = categ_cut
 
     class sub:
         def __init__(self, obj):
@@ -103,9 +102,9 @@ class Discretization:
             fig.show()
 
     def gen_comb(self):
-        '''
+        """
         生成全部切点的排列组合，计算所有的WOE、IV、p、detail等信息
-        '''
+        """
         cross = self.cross.copy(deep=True)
         I_min = self.I_min
         U_min = self.U_min
@@ -154,7 +153,7 @@ class Discretization:
         self.categories = s
 
     def select_var(self, subName, Dict, mthd, delother):
-        '''
+        """
         选择分箱方式
         input
             subName         子类的名称
@@ -164,7 +163,7 @@ class Discretization:
                 IV          选择IV最大的
                 entropy     选择entropy最大的
             delother        是否删除其他子类
-        '''
+        """
         NumBin = getattr(getattr(self, subName), 'NumBin')
         if NumBin not in Dict.keys():
             Dict[NumBin] = getattr(self, subName)
@@ -186,7 +185,7 @@ class Discretization:
             delattr(self, subName)
 
     def select_global_best(self, select_dthd='p', del_other=True):
-        '''
+        """
         通过全局所有可能的切点合并组合，找到相同箱数中最优的合并方式
         input
             select_dthd         选择方式
@@ -194,7 +193,7 @@ class Discretization:
                 IV              最大IV
                 entropy         最大entropy
             del_other           是否删除其他类
-        '''
+        """
         self.gen_comb()
         categories = self.categories
         selectPIV = self.select_var
@@ -228,9 +227,9 @@ class Discretization:
                 pass
 
     def select_local_best(self):
-        '''
+        """
         通过每次取局部最优达到最后的分箱，每次取局部最后取每减少一箱中最优的合并。
-        '''
+        """
         cross = self.cross.copy(deep=True)
         nonna = cross.loc[cross.index != -1, :]
         nacross = cross.loc[cross.index == -1, :]
@@ -283,7 +282,7 @@ class Discretization:
 def vars_discrete(df, dep_var='FLAG', n_cut=50, I_min=3, U_min=4,
                   cut_mthd='eqqt', suffix='raw_bins_', thrd_PCT=0.03,
                   max_bins=6, prior_shape=None, prec=5, select_dthd='p'):
-    '''
+    """
     将所有变量进行分箱操作。
     input
         df          原始数据，原值
@@ -298,7 +297,7 @@ def vars_discrete(df, dep_var='FLAG', n_cut=50, I_min=3, U_min=4,
         prior_shape 先验形状，传入dataframe，需要包含VAR、SHAPE、TYPE字段
         prec        精度
         select_dthd 选择最优分箱的标准
-    '''
+    """
     # 只对有先验形状的变量进行分箱
     if prior_shape is not None:
         names = list(set(df.columns)-set(dep_var) & set(prior_shape['VAR']))
@@ -337,12 +336,12 @@ def vars_discrete(df, dep_var='FLAG', n_cut=50, I_min=3, U_min=4,
 
 
 def select_fea_IV(names, IV_thrd=0.1):
-    '''
+    """
     根据IV筛选变量，返回超过阈值的变量和全部变量的IV
     input
         names           变量名集合
         IV_thrd         IV下限
-    '''
+    """
     ret_names = []
     IV_df = pd.DataFrame()
     for name in names:
@@ -359,12 +358,12 @@ def select_fea_IV(names, IV_thrd=0.1):
 
 
 def discrete_apply(df, names):
-    '''
+    """
     分箱结果应用到数据集
     input
         df          原始数据，原值
         names       需要应用的变量名集合
-    '''
+    """
     t_df = df.copy(deep=True)
     for name in names:
         for s in getattr(globals()[name], 'best'):
