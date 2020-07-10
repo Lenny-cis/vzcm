@@ -139,7 +139,7 @@ def gen_cross(df, col_var, dep_var, cut, prec=5, vtype=None):
     """
     # 切分后返回bin[0, 1, ...]
     t_df = df.copy(deep=True)
-    if vtype != 'categ':
+    if vtype != 'category':
         t_df[col_var] = pd.cut(t_df[col_var], cut, precision=prec,
                                duplicates='drop', labels=False)
     # 生成列联表
@@ -154,6 +154,45 @@ def gen_cross(df, col_var, dep_var, cut, prec=5, vtype=None):
     return cross
 
 
+def gen_cross_numeric(df, x, y, n=10, mthd='eqqt'):
+    t_df = df.copy(deep=True)
+    cut = gen_cut(t_df.loc[:, x], n=n, mthd=mthd)
+    if type(cut).__name__ != 'list':
+        return None, cut
+    # 切分后返回bin[0, 1, ...]
+    t_df[x] = pd.cut(t_df[x], cut, labels=False, duplicates='drop')
+    cross = t_df.groupby([x, y]).size().unstack()
+    t_cut = [cut[int(x+1)] for x in cross.index]
+    t_cut.insert(0, -np.inf)
+    allsize = t_df.groupby([y]).size()
+    na_cross = pd.DataFrame({0: np.nansum([allsize[0], -cross.sum()[0]]),
+                             1: np.nansum([allsize[1], -cross.sum()[1]])},
+                            index=[-1])
+    cross.reset_index(inplace=True, drop=True)
+    cross = cross.append(na_cross)
+    cross.fillna(0, inplace=True)
+    return cross, t_cut
+
+
+def gen_cross_category(df, x, y):
+    t_df = df.copy(deep=True)
+    cross = t_df.groupby([x, y]).size().unstack()
+    if not t_df.loc[:, x].cat.ordered:
+        cross['eventRate'] = cross[1]/np.nansum(cross, axis=1)
+        cross.sort_values('eventRate', ascending=False, inplace=True)
+        cross.drop(['eventRate'], inplace=True, axis=1)
+    cut = list(cross.index)
+    cross.reset_index(inplace=True, drop=True)
+    allsize = t_df.groupby([y]).size()
+    na_cross = pd.DataFrame({0: np.nansum([allsize[0], -cross.sum()[0]]),
+                             1: np.nansum([allsize[1], -cross.sum()[1]])},
+                            index=[-1])
+    cross.reset_index(inplace=True, drop=True)
+    cross = cross.append(na_cross)
+    cross.fillna(0, inplace=True)
+    return cross, cut
+    
+    
 def gen_cut_cross(df, col_var, dep_var, n=10, mthd='eqqt', vtype=None):
     """
     根据切点个数和切分方法生成列联表.
@@ -258,6 +297,26 @@ def merge_bin(df, idxlist, cut):
     # 调整合并后的切点
     t_cut = [x for x in cut if cut.index(x) not in idxlist]
     return cross, t_cut
+
+
+def merge_bin_by_idx(crs, idxlist):
+    """
+    合并分箱，返回合并后的列联表和切点，合并过程中不会改变缺失组，向下合并的方式.
+
+    input
+        df          bin和[0, 1]的列联表
+        idxlist     需要合并的箱的索引，列表格式
+    """
+    cross = crs[crs.index != -1].copy(deep=True).values
+    cols = crs.columns
+    # 倒序循环需合并的列表，正序会导致表索引改变，合并出错
+    for idx in idxlist[::-1]:
+        cross[idx] = cross[idx-1: idx+1].sum(axis=0)
+        cross = np.delete(cross, idx-1, axis=0)
+
+    cross = pd.DataFrame(cross, columns=cols)\
+        .append(crs[crs.index == -1])
+    return cross
 
 
 def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
