@@ -309,12 +309,15 @@ def merge_bin_by_idx(crs, idxlist):
     """
     cross = crs[crs.index != -1].copy(deep=True).values
     cols = crs.columns
+    idxs_idxs = [list(crs.index).index(x) for x in crs.index if x in idxlist]
+    reidxs = [x for x in crs.index if x != -1]
     # 倒序循环需合并的列表，正序会导致表索引改变，合并出错
-    for idx in idxlist[::-1]:
+    for idx in idxs_idxs[::-1]:
         cross[idx] = cross[idx-1: idx+1].sum(axis=0)
         cross = np.delete(cross, idx-1, axis=0)
+        reidxs.pop(idx-1)
 
-    cross = pd.DataFrame(cross, columns=cols)\
+    cross = pd.DataFrame(cross, columns=cols, index=reidxs)\
         .append(crs[crs.index == -1])
     return cross
 
