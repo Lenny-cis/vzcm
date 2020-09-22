@@ -9,14 +9,13 @@ import pandas as pd
 import numpy as np
 import itertools as its
 import scipy.stats as sps
-import sys
-
-sys.path.append('../')
-
-import utils as utl
+import copy
+from binning.utils import (gen_cross_numeric, gen_cross_category, merge_bin_by_idx,
+                           bad_rate_shape, cal_WOE_IV)
 
 
-class Bining:
+class Binning:
+    """特征全集分箱."""
 
     def __init__(self, dic={}, cut_cnt=50, thrd_PCT=0.03, max_bin_cnt=6):
         self.cut_cnt = cut_cnt
@@ -25,24 +24,32 @@ class Bining:
         self.dic = dic
 
     def fit(self, X, y):
+        """训练."""
         for x_name in X.columns:
-            x_bining = varBining(self.dic.get(x_name, {}))
-            x_bining.fit(X.loc[:, x_name], y)
-            setattr(self, x_name, x_bining)
-            del x_bining
+            x_binning = varBinning(self.dic.get(x_name, {}),
+                                   cut_cnt=self.cut_cnt,
+                                   thrd_PCT=self.thrd_PCT,
+                                   max_bin_cnt=self.max_bin_cnt)
+            x_binning.fit(X.loc[:, x_name], y)
+            setattr(self, x_name, x_binning)
+            del x_binning
         return self
 
     def transform(self, X):
+        """应用."""
         X_trns = X.copy(deep=True)
         for x_name in X.columns:
-            x_bining = getattr(self, x_name)
-            X_trns.loc[:, x_name] = x_bining.transform(X.loc[:, x_name])
+            x_binning = getattr(self, x_name)
+            x_trns = x_binning.transform(X.loc[:, x_name])
+            X_trns = pd.concat([X_trns, x_trns], axis=1)
         return X_trns
 
 
-class varBining(Bining):
-    def __init__(self, dic):
-        super().__init__(dic)
+class varBinning(Binning):
+    """单个变量分箱."""
+
+    def __init__(self, dic, cut_cnt=50, thrd_PCT=0.03, max_bin_cnt=6):
+        super().__init__(dic, cut_cnt, thrd_PCT, max_bin_cnt)
         self.I_min = dic.get('I_min', 3)
         self.U_min = dic.get('U_min', 4)
         self.cut_mthd = dic.get('cut_mthd', 'eqqt')
@@ -82,15 +89,15 @@ class varBining(Bining):
         return list(dic.values())
 
     def _numeric_cross(self, df_set, x):
-        cross, cut = utl.gen_cross_numeric(
+        cross, cut = gen_cross_numeric(
             df_set, x, self.dep, self.cut_cnt, self.cut_mthd)
         return cross, cut
 
     def _category_cross(self, df_set, x):
-        cross, cut = utl.gen_cross_category(df_set, x, self.dep)
+        cross, cut = gen_cross_category(df_set, x, self.dep)
         return cross, cut
 
-    def _gen_comb_bins(self, crs):
+    def _gen_comb_bins(self, crs, cut):
         cross = crs.copy(deep=True)
         min_I = self.I_min - 1
         min_U = self.U_min - 1
@@ -105,15 +112,13 @@ class varBining(Bining):
         for loop in range(min_cut_loops_cnt, max_cut_loops_cnt):
             bin_comb = its.combinations(cut_point_list, loop)
             for bin_idxs in bin_comb:
-                # print(bin_idxs)
                 # 根据选取的切点合并列联表
-                merged = utl.merge_bin_by_idx(cross, bin_idxs)
-                shape = utl.bad_rate_shape(merged, self.I_min, self.U_min)
+                merged = merge_bin_by_idx(cross, bin_idxs)
+                shape = bad_rate_shape(merged, self.I_min, self.U_min)
                 # badrate的形状符合先验形状的分箱方式保留下来
                 if not pd.isna(shape) and shape in self.prior_shape:
-                    # print(shape)
                     var_bin_dic[s] = {}
-                    detail, IV = utl.cal_WOE_IV(merged)
+                    detail, IV = cal_WOE_IV(merged)
                     chi, p, dof, expFreq =\
                         sps.chi2_contingency(
                                 merged.loc[~merged.index.isin([-1]), :].values,
@@ -122,56 +127,77 @@ class varBining(Bining):
                             detail.loc[detail.index != -1, 'All'])
                     var_bin_dic[s]['detail'] = detail
                     var_bin_dic[s]['IV'] = IV
-                    var_bin_dic[s]['p_value'] = p
+                    var_bin_dic[s]['flogp'] = -np.log(p)
                     var_bin_dic[s]['entropy'] = var_entropy
                     var_bin_dic[s]['shape'] = shape
                     var_bin_dic[s]['bin_cnt'] = len(merged)-1
                     var_bin_dic[s]['bin_idxs'] = bin_idxs
+                    if isinstance(cut, list):
+                        var_bin_dic[s]['cut'] = [x for i, x in enumerate(cut) if i not in bin_idxs]
+                    elif isinstance(cut, dict):
+                        t_cut = copy.deepcopy(cut)
+                        for idx in bin_idxs[::-1]:
+                            t_d = {k: v-1 for k, v in t_cut.items() if v >= idx}
+                            t_cut.update(t_d)
+                        t_cut.update({np.nan: -1})
+                        var_bin_dic[s]['cut'] = t_cut
+                    var_bin_dic[s]['WOE'] = detail['WOE'].to_dict()
+                    s += 1
         return var_bin_dic
 
     def _select_best(self, dic):
         self._validate_input()
+        if len(dic) == 0:
+            return {}
+        dd = pd.DataFrame.from_dict(dic, orient='index')
         if self.slc_mthd == 'p':
-            comp_dic = {k: v['p'] for (k, v) in dic.items()}
-            best_idx = sorted(
-                comp_dic.items(), key=lambda x: x[1], reverse=True)[0][0]
-
+            sort_keys = ['flogp', 'entropy', 'IV']
         elif self.slc_mthd == 'IV':
-            comp_dic = {k: v['IV'] for (k, v) in dic.items()}
-            best_idx = sorted(
-                comp_dic.items(), key=lambda x: x[1], reverse=False)[0][0]
-
+            sort_keys = ['IV', 'entropy', 'flogp']
         else:
-            comp_dic = {k: v['entropy'] for (k, v) in dic.items()}
-            best_idx = sorted(
-                comp_dic.items(), key=lambda x: x[1], reverse=False)[0][0]
-        return dic[best_idx]
+            sort_keys = ['entropy', 'IV', 'flogp']
+
+        best_dd = dd.sort_values(by=sort_keys, ascending=False).groupby(['shape', 'bin_cnt']).head(1)
+        return best_dd.to_dict(orient='index')
 
     def fit(self, x, y):
+        """单变量训练."""
         df_set = pd.DataFrame({x.name: x, y.name: y})
         self.dep = y.name
         if x.values.dtype.kind in ['f', 'i', 'u']:
             cross, cut = self._numeric_cross(df_set, x.name)
-            print(cross, cut)
-            numeric_dic = self._gen_comb_bins(cross)
+            numeric_dic = self._gen_comb_bins(cross, cut)
             best_dic = self._select_best(numeric_dic)
-            best_dic['cut'] = [x for x in cut if x not in best_dic['bin_idxs']]
-            best_dic['WOE'] = best_dic['detail']['WOE'].to_dict()
 
         else:
+            if x.dtypes.ordered == False:
+                self.prior_shape = 'D'
             cross, cut = self._category_cross(df_set, x.name)
-            print(cross, cut)
-            category_dic = self._gen_comb_bins(cross)
+            category_dic = self._gen_comb_bins(cross, cut)
+            print(cut)
             best_dic = self._select_best(category_dic)
-            best_dic['cut'] = self._category_cut_adj(cut, best_dic['bin_idxs'])
-            best_dic['WOE'] = best_dic['detail']['WOE'].to_dict()
 
         self.best_dic = best_dic
         return self
 
     def transform(self, x):
-        if x.values.dtype.kind in ['f', 'i', 'u']:
-            x_trns = pd.cut(x, self.best_dic['cut'], labels=False)
+        """单变量应用."""
+        trns = pd.DataFrame()
+        cl = list(x.dtypes.categories)
+        cl.append(-1)
+        x = x.copy(deep=True)
+        co = x.dtypes.ordered
+        x = x.astype(pd.CategoricalDtype(cl, ordered=co))
+        for i in self.best_dic:
+            shape = self.best_dic[i]['shape']
+            bin_cnt = self.best_dic[i]['bin_cnt']
+            name = '_'.join([str(x.name), str(shape), str(bin_cnt)])
+            if x.values.dtype.kind in ['f', 'i', 'u']:
+                x_trns = pd.cut(x, self.best_dic[i]['cut'], labels=False)
+            else:
+                x_trns = x.map(self.best_dic[i]['cut'])
             x_trns.fillna(-1, inplace=True)
-            x_trns = x_trns.map(self.best_dic['WOE'])
-        return x_trns
+            x_trns = x_trns.map(self.best_dic[i]['WOE'])
+            x_trns.name = name
+            trns = pd.concat([trns, x_trns], axis=1)
+        return trns

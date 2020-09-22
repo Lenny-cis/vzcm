@@ -137,13 +137,13 @@ def gen_gaintable(pred, y, bins=20, prob=True, output=False):
     t_df['total'] = 1
     total_bad_num = t_df['flag'].sum()
     total_good_num = len(t_df)-total_bad_num
-    score_df = t_df.groupby(['cut'])['pred']\
-        .agg({'min_score': 'min', 'max_score': 'max'})
+    score_df = t_df.groupby(['cut'])['pred'].agg(['min', 'max'])\
+        .rename(columns={'min': 'min_score', 'max': 'max_score'})
     score_df = score_df.applymap(lambda x: round(x, 4))
     score_df['score_range'] = score_df.apply(
             lambda x: pd.Interval(x['min_score'], x['max_score']), axis=1)
-    num_df = t_df.groupby(['cut'])['flag'].agg(
-            {'bad_num': 'sum', 'total': 'count'})
+    num_df = t_df.groupby(['cut'])['flag'].agg(['sum', 'count'])\
+        .rename(columns={'sum': 'bad_num', 'count': 'total'})
     num_df['good_num'] = num_df['total']-num_df['bad_num']
     num_df['bad_rate'] = num_df['bad_num']/num_df['total']
     num_df.sort_index(ascending=True, inplace=True)
@@ -169,8 +169,11 @@ def gen_gaintable(pred, y, bins=20, prob=True, output=False):
 
 def plotlift(df, title):
     f, ax = plt.subplots(figsize=(12, 9), tight_layout=True)
-    ax.bar(range(len(df.index)), df['bad_num'])
     ax2 = ax.twinx()
-    ax2.plot(range(len(df.index)), df['lift'], color='r')
-    ax.set_xticklabels(df.index, rotation=45)
+    f1 = ax.bar(range(len(df.index)), df['bad_num'])
+    f2, = ax2.plot(range(len(df.index)), df['lift'], color='r')
+    ax.set_xticks(list(range(len(df))))
+    ax.set_xticklabels(df.loc[:, 'score_range'], rotation=45)
     ax.set_title(title)
+    plt.legend([f1, f2 ], ['bad_num', 'lift'])
+    plt.show()
