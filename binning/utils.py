@@ -6,8 +6,23 @@ Created on Tue Sep 22 10:46:41 2020
 """
 
 
+import sys
+import warnings
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
+
+
+def make_tqdm_iterator(**kwargs):
+    """产生tqdm进度条迭代器."""
+    options = {
+        "file": sys.stdout,
+        "leave": True
+    }
+    options.update(kwargs)
+    iterator = tqdm(**options)
+    return iterator
+
 
 def is_shape_I(values):
     """判断输入的列表/序列是否为单调递增."""
@@ -155,6 +170,7 @@ def gen_cross(df, col_var, dep_var, cut, prec=5, vtype=None):
 
 
 def gen_cross_numeric(df, x, y, n=10, mthd='eqqt'):
+    """生成数值字段的列联表."""
     t_df = df.copy(deep=True)
     cut = gen_cut(t_df.loc[:, x], n=n, mthd=mthd)
     if type(cut).__name__ != 'list':
@@ -175,6 +191,7 @@ def gen_cross_numeric(df, x, y, n=10, mthd='eqqt'):
 
 
 def gen_cross_category(df, x, y):
+    """生成分类字段的列联表."""
     t_df = df.copy(deep=True)
     cross = t_df.groupby([x, y]).size().unstack()
     if not t_df.loc[:, x].cat.ordered:
@@ -251,6 +268,7 @@ def cal_WOE_IV(df, modify=True):
                      若缺失组的WOE最大，则调整为非缺失组的最大值
                      若缺失组的WOE最小，则调整为0
     """
+    warnings.filterwarnings('ignore')
     cross = df.values
     col_margin = cross.sum(axis=0)
     row_margin = cross.sum(axis=1)
@@ -271,6 +289,7 @@ def cal_WOE_IV(df, modify=True):
             WOE[df.index == -1] = 0
 
     IV = np.where(event_rate == 1, 0, (event_prop-non_event_prop)*WOE)
+    warnings.filterwarnings('default')
     return pd.DataFrame({'All': row_margin, 'eventRate': event_rate,
                          'WOE': WOE.round(4), 'IV': IV}, index=df.index),\
         IV.sum()
@@ -317,6 +336,68 @@ def merge_bin_by_idx(crs, idxlist):
     cross = pd.DataFrame(cross, columns=cols)\
         .append(crs[crs.index == -1])
     return cross
+
+
+def merge_lowpct_zero(df, thrd_PCT=0.05, mthd='PCT'):
+    """
+    合并个数为0和占比过低的箱，不改变缺失组的结果.
+
+    input
+        df          bin和[0, 1]的列联表
+        cut         原始切点
+        thrd_PCT    占比阈值
+        mthd        合并方法
+            PCT     合并占比过低的箱
+            zero    合并个数为0的箱
+    """
+    cross = df[df.index != -1].copy(deep=True)
+    s = 1
+    merge_idxs = []
+    while s:
+        row_margin = cross.sum(axis=1)
+        total = row_margin.sum()
+        min_num = row_margin.min()
+        # 找到占比最低的组或个数为0的组
+        if mthd.upper() == 'PCT':
+            min_idx = row_margin.idxmin()
+
+        else:
+            zero_idxs = cross[(cross == 0).any(axis=1)].index
+            if len(zero_idxs) >= 1:
+                min_idx = zero_idxs[0]
+                min_num = 0
+
+            else:
+                min_num = np.inf
+        # 占比低于阈值则合并
+        if min_num/total <= thrd_PCT:
+            idxs = list(cross.index)
+            # 最低占比的组的索引作为需要合并的组
+            # sup_idx确定合并索引的上界，上界不超过箱数
+            # inf_idx确定合并索引的下界，下界不低于0
+            min_idx_row = idxs.index(min_idx)
+            sup_idx = idxs[min(len(cross)-1, min_idx_row+1)]
+            inf_idx = idxs[max(0, min_idx_row-1)]
+            # 需合并组为第一组，向下合并
+            if min_idx == idxs[0]:
+                merge_idx = idxs[1]
+            # 需合并组为最后一组，向上合并
+            elif min_idx == idxs[-1]:
+                merge_idx = min_idx
+
+            elif sup_idx == inf_idx:
+                merge_idx = inf_idx
+            # 介于第一组和最后一组之间，找向上或向下最近的组合并
+
+            else:
+                merge_idx = slc_min_dist(cross.loc[inf_idx: sup_idx])
+
+            cross = merge_bin_by_idx(cross, [merge_idx])
+            merge_idxs.append(merge_idx)
+        else:
+            s = 0
+
+    return cross.append(df[df.index == -1]), merge_idxs
 
 
 def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):

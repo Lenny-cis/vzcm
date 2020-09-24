@@ -11,13 +11,15 @@ import itertools as its
 import scipy.stats as sps
 import copy
 from binning.utils import (gen_cross_numeric, gen_cross_category, merge_bin_by_idx,
-                           bad_rate_shape, cal_WOE_IV)
+                           bad_rate_shape, cal_WOE_IV, make_tqdm_iterator, merge_lowpct_zero)
+
+PBAR_FORMAT = "Var: {desc} | Possible: {total} | Elapsed: {elapsed} | Progress: {l_bar}{bar}"
 
 
 class Binning:
     """特征全集分箱."""
 
-    def __init__(self, dic={}, cut_cnt=50, thrd_PCT=0.03, max_bin_cnt=6):
+    def __init__(self, dic={}, cut_cnt=20, thrd_PCT=0.05, max_bin_cnt=6):
         self.cut_cnt = cut_cnt
         self.thrd_PCT = thrd_PCT
         self.max_bin_cnt = max_bin_cnt
@@ -48,7 +50,7 @@ class Binning:
 class varBinning(Binning):
     """单个变量分箱."""
 
-    def __init__(self, dic, cut_cnt=50, thrd_PCT=0.03, max_bin_cnt=6):
+    def __init__(self, dic, cut_cnt=20, thrd_PCT=0.05, max_bin_cnt=6):
         super().__init__(dic, cut_cnt, thrd_PCT, max_bin_cnt)
         self.I_min = dic.get('I_min', 3)
         self.U_min = dic.get('U_min', 4)
@@ -80,13 +82,16 @@ class varBinning(Binning):
                              "但使用了prior_shape={1}".format(
                                  allowed_shape, self.prior_shape))
 
-    def _category_cut_adj(self, cut, idxs):
-        dic = dict(enumerate(cut))
-        for idx in idxs[::-1]:
-            dic[idx-1] = list(dic[idx-1])
-            dic[idx-1].extend(dic[idx])
-            del dic[idx]
-        return list(dic.values())
+    @staticmethod
+    def _cut_adj(cut, bin_idxs):
+        if isinstance(cut, list):
+            return [x for i, x in enumerate(cut) if i not in bin_idxs]
+        elif isinstance(cut, dict):
+            t_cut = copy.deepcopy(cut)
+            for idx in bin_idxs[::-1]:
+                t_d = {k: v-1 for k, v in t_cut.items() if v >= idx}
+                t_cut.update(t_d)
+            return t_cut
 
     def _numeric_cross(self, df_set, x):
         cross, cut = gen_cross_numeric(
@@ -96,6 +101,16 @@ class varBinning(Binning):
     def _category_cross(self, df_set, x):
         cross, cut = gen_cross_category(df_set, x, self.dep)
         return cross, cut
+
+    def _lowpct_zero_merge(self, crs, cut):
+        cross = crs.copy(deep=True)
+        cross, pct_idxs = merge_lowpct_zero(cross, thrd_PCT=self.thrd_PCT, mthd='PCT')
+        pct_cut = varBinning._cut_adj(cut, pct_idxs)
+        cross, zero_idxs = merge_lowpct_zero(cross, thrd_PCT=self.thrd_PCT, mthd='zero')
+        t_cut = varBinning._cut_adj(pct_cut, zero_idxs)
+        return cross, t_cut
+
+
 
     def _gen_comb_bins(self, crs, cut):
         cross = crs.copy(deep=True)
@@ -109,9 +124,13 @@ class varBinning(Binning):
         min_cut_loops_cnt = max(cut_point_cnt - max_cut_cnt, 0)
         var_bin_dic = {}
         s = 0
-        for loop in range(min_cut_loops_cnt, max_cut_loops_cnt):
-            bin_comb = its.combinations(cut_point_list, loop)
-            for bin_idxs in bin_comb:
+        loops_ = range(min_cut_loops_cnt, max_cut_loops_cnt)
+        bcs = [bi for loop in loops_ for bi in its.combinations(cut_point_list, loop)]
+        tqdm_options = {'bar_format': PBAR_FORMAT,
+                        'total': len(bcs),
+                        'desc': self.indep}
+        with make_tqdm_iterator(**tqdm_options) as progress_bar:
+            for bin_idxs in bcs:
                 # 根据选取的切点合并列联表
                 merged = merge_bin_by_idx(cross, bin_idxs)
                 shape = bad_rate_shape(merged, self.I_min, self.U_min)
@@ -132,17 +151,10 @@ class varBinning(Binning):
                     var_bin_dic[s]['shape'] = shape
                     var_bin_dic[s]['bin_cnt'] = len(merged)-1
                     var_bin_dic[s]['bin_idxs'] = bin_idxs
-                    if isinstance(cut, list):
-                        var_bin_dic[s]['cut'] = [x for i, x in enumerate(cut) if i not in bin_idxs]
-                    elif isinstance(cut, dict):
-                        t_cut = copy.deepcopy(cut)
-                        for idx in bin_idxs[::-1]:
-                            t_d = {k: v-1 for k, v in t_cut.items() if v >= idx}
-                            t_cut.update(t_d)
-                        t_cut.update({np.nan: -1})
-                        var_bin_dic[s]['cut'] = t_cut
+                    var_bin_dic[s]['cut'] = varBinning._cut_adj(cut, bin_idxs)
                     var_bin_dic[s]['WOE'] = detail['WOE'].to_dict()
                     s += 1
+                progress_bar.update()
         return var_bin_dic
 
     def _select_best(self, dic):
@@ -164,17 +176,19 @@ class varBinning(Binning):
         """单变量训练."""
         df_set = pd.DataFrame({x.name: x, y.name: y})
         self.dep = y.name
+        self.indep = x.name
         if x.values.dtype.kind in ['f', 'i', 'u']:
             cross, cut = self._numeric_cross(df_set, x.name)
+            cross, cut = self._lowpct_zero_merge(cross, cut)
             numeric_dic = self._gen_comb_bins(cross, cut)
             best_dic = self._select_best(numeric_dic)
 
         else:
-            if x.dtypes.ordered == False:
+            if not x.dtypes.ordered:
                 self.prior_shape = 'D'
             cross, cut = self._category_cross(df_set, x.name)
+            cross, cut = self._lowpct_zero_merge(cross, cut)
             category_dic = self._gen_comb_bins(cross, cut)
-            print(cut)
             best_dic = self._select_best(category_dic)
 
         self.best_dic = best_dic
@@ -183,11 +197,6 @@ class varBinning(Binning):
     def transform(self, x):
         """单变量应用."""
         trns = pd.DataFrame()
-        cl = list(x.dtypes.categories)
-        cl.append(-1)
-        x = x.copy(deep=True)
-        co = x.dtypes.ordered
-        x = x.astype(pd.CategoricalDtype(cl, ordered=co))
         for i in self.best_dic:
             shape = self.best_dic[i]['shape']
             bin_cnt = self.best_dic[i]['bin_cnt']
@@ -195,7 +204,12 @@ class varBinning(Binning):
             if x.values.dtype.kind in ['f', 'i', 'u']:
                 x_trns = pd.cut(x, self.best_dic[i]['cut'], labels=False)
             else:
-                x_trns = x.map(self.best_dic[i]['cut'])
+                t_x = x.copy(deep=True)
+                cl = list(t_x.dtypes.categories)
+                cl.append(-1)
+                co = t_x.dtypes.ordered
+                t_x = t_x.astype(pd.CategoricalDtype(cl, ordered=co))
+                x_trns = t_x.map(self.best_dic[i]['cut'])
             x_trns.fillna(-1, inplace=True)
             x_trns = x_trns.map(self.best_dic[i]['WOE'])
             x_trns.name = name
