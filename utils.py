@@ -48,3 +48,11 @@ def obtainNonRelativeFeats(corrDf, varsDic, thred=0.6):
         if len(t_df) == 0:
             s = 0
     return list(set(corrDf.index) - set(corrFeats))
+
+
+def update_dict(dict1, dict2):
+    dict1 = dict1.copy()
+    for k, v in dict2.items():
+        dic = dict1.get(k, {})
+        dic.update(v)
+    return dict1

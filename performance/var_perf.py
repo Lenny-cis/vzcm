@@ -23,13 +23,13 @@ def var_perf(y, x, pos_label=None):
     iv = caliv(cross.values)
     # 计算ks及auc
     cross.loc[:, 'event_prop'] = cross.loc[:, 1] / cross.sum(axis=1)
-    prop_dict = cross.loc[:, 'event_prop'].to_dict(orient='index')
+    prop_dict = cross.loc[:, 'event_prop'].to_dict()
     if x.values.dtype.kind in ['f', 'i', 'u']:
         new_x = pd.cut(x, cut, labels=False).map(prop_dict)
-
     else:
-        new_x = x.map(cut).map(prop_dict)
+        new_x = x.map(cut).map(prop_dict).astype(float)
 
+    new_x.fillna(prop_dict.get(-1, 0), inplace=True)
     ks = calks(y, new_x, pos_label)
     auc = calauc(y, new_x, pos_label)
     return ks, auc, iv

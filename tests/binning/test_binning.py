@@ -18,7 +18,7 @@ for i, (e, noe) in enumerate(zip([40, 41, 80, 199, 200], [360, 359, 320, 201, 20
 test_raw.index = test_raw.index + 10000
 
 test_raw.groupby(['x', 'flag']).size().unstack()
-var_dic = {'x': {'prior_shape': 'I', 'slc_mthd': 'entropy'}}
+var_dic = {'x': {'variable_shape': 'I', 'slc_mthd': 'entropy'}}
 
 test_bin = Binning(var_dic, cut_cnt=5)
 test_bin.fit(test_raw.loc[:, ['x']], test_raw.loc[:, 'flag'])
@@ -41,7 +41,7 @@ test_raw.index = test_raw.index + 10000
 test_raw.loc[:, 'x'] = test_raw.loc[:, 'x'].astype(pd.CategoricalDtype(['10', '11', '12', '13', '14'], ordered=True))
 
 test_raw.groupby(['x', 'flag']).size().unstack()
-var_dic = {'x': {'prior_shape': 'I', 'slc_mthd': 'entropy'}}
+var_dic = {'x': {'variable_shape': 'I', 'slc_mthd': 'entropy'}}
 
 test_bin = Binning(var_dic, cut_cnt=5)
 test_bin.fit(test_raw.loc[:, ['x']], test_raw.loc[:, 'flag'])
@@ -61,7 +61,7 @@ for i, (e, noe) in enumerate(zip([40, 41, 0, 199, 200], [360, 359, 400, 201, 200
 test_raw.index = test_raw.index + 10000
 
 test_raw.groupby(['x', 'flag']).size().unstack()
-var_dic = {'x': {'prior_shape': 'IDU', 'slc_mthd': 'entropy'}}
+var_dic = {'x': {'variable_shape': 'IDU', 'slc_mthd': 'entropy'}}
 
 test_bin = Binning(var_dic, cut_cnt=5)
 test_bin.fit(test_raw.loc[:, ['x']], test_raw.loc[:, 'flag'])
@@ -84,7 +84,7 @@ test_raw.index = test_raw.index + 10000
 test_raw.loc[:, 'x'] = test_raw.loc[:, 'x'].astype(pd.CategoricalDtype(['10', '11', '12', '13', '14'], ordered=False))
 
 test_raw.groupby(['x', 'flag']).size().unstack()
-var_dic = {'x': {'prior_shape': 'I', 'slc_mthd': 'entropy'}}
+var_dic = {'x': {'variable_shape': 'I', 'slc_mthd': 'entropy'}}
 
 test_bin = Binning(var_dic, cut_cnt=5)
 test_bin.fit(test_raw.loc[:, ['x']], test_raw.loc[:, 'flag'])

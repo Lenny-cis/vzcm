@@ -35,6 +35,7 @@ class Binning:
             x_binning.fit(X.loc[:, x_name], y)
             setattr(self, x_name, x_binning)
             del x_binning
+        self.report = self.output(X.columns)
         return self
 
     def transform(self, X):
@@ -46,6 +47,36 @@ class Binning:
             X_trns = pd.concat([X_trns, x_trns], axis=1)
         return X_trns
 
+    def output(self, x_names):
+        out = pd.DataFrame()
+        for x in x_names:
+            bdict = getattr(self, x).best_dic
+            for k, dic in bdict.items():
+                detail = dic['detail'].copy()
+                cut = dic['cut'].copy()
+                if isinstance(cut, dict):
+                    t_c = {}
+                    for ck, v in cut.items():
+                        t_c.update({v: t_c.get(v, []) + [ck]})
+                    cut = list(t_c.values()) + ['NaN']
+                    detail.loc[:, 'Lbound'] = detail.loc[:, 'Ubound'] = cut
+                else:
+                    detail.loc[:, 'Lbound'] = cut[:-1] + ['NaN']
+                    detail.loc[:, 'Ubound'] = cut[1:] + ['NaN']
+                detail.loc[:, 'SUMIV'] = dic['IV']
+                detail.loc[:, 'entropy'] = dic['entropy']
+                detail.loc[:, 'flogp'] = dic['flogp']
+                detail.loc[:, 'shape'] = dic['shape']
+                detail.loc[:, '_id'] = k
+                detail.loc[:, 'var'] = x
+                detail = detail.loc[:, ['_id', 'var', 'Lbound', 'Ubound',
+                                        'All', 'eventRate', 'WOE', 'shape',
+                                        'IV', 'SUMIV', 'entropy', 'flogp']]
+                out = pd.concat([out, detail])
+        return out
+
+
+
 
 class varBinning(Binning):
     """单个变量分箱."""
@@ -55,12 +86,12 @@ class varBinning(Binning):
         self.I_min = dic.get('I_min', 3)
         self.U_min = dic.get('U_min', 4)
         self.cut_mthd = dic.get('cut_mthd', 'eqqt')
-        self.prior_shape = list(dic.get('prior_shape', None))
+        self.variable_shape = list(dic.get('variable_shape', None))
         self.slc_mthd = dic.get('slc_mthd', 'entropy')
         self.dic['I_min'] = self.I_min
         self.dic['U_min'] = self.U_min
         self.dic['cut_mthd'] = self.cut_mthd
-        self.dic['prior_shape'] = self.prior_shape
+        self.dic['variable_shape'] = self.variable_shape
         self.dic['slc_mthd'] = self.slc_mthd
 
     def _validate_input(self):
@@ -77,10 +108,10 @@ class varBinning(Binning):
                                  allowed_mthd, self.cut_mthd))
 
         allowed_shape = ['I', 'D', 'U', 'A']
-        if not np.isin(self.prior_shape, allowed_shape).all():
-            raise ValueError("仅支持prior_shape {0}"
-                             "但使用了prior_shape={1}".format(
-                                 allowed_shape, self.prior_shape))
+        if not np.isin(self.variable_shape, allowed_shape).all():
+            raise ValueError("仅支持variable_shape {0}"
+                             "但使用了variable_shape={1}".format(
+                                 allowed_shape, self.variable_shape))
 
     @staticmethod
     def _cut_adj(cut, bin_idxs):
@@ -104,10 +135,8 @@ class varBinning(Binning):
 
     def _lowpct_zero_merge(self, crs, cut):
         cross = crs.copy(deep=True)
-        cross, pct_idxs = merge_lowpct_zero(cross, thrd_PCT=self.thrd_PCT, mthd='PCT')
-        pct_cut = varBinning._cut_adj(cut, pct_idxs)
-        cross, zero_idxs = merge_lowpct_zero(cross, thrd_PCT=self.thrd_PCT, mthd='zero')
-        t_cut = varBinning._cut_adj(pct_cut, zero_idxs)
+        cross, pct_cut = merge_lowpct_zero(cross, cut, thrd_PCT=self.thrd_PCT, mthd='PCT')
+        cross, t_cut = merge_lowpct_zero(cross, pct_cut, thrd_PCT=self.thrd_PCT, mthd='zero')
         return cross, t_cut
 
 
@@ -135,7 +164,7 @@ class varBinning(Binning):
                 merged = merge_bin_by_idx(cross, bin_idxs)
                 shape = bad_rate_shape(merged, self.I_min, self.U_min)
                 # badrate的形状符合先验形状的分箱方式保留下来
-                if not pd.isna(shape) and shape in self.prior_shape:
+                if not pd.isna(shape) and shape in self.variable_shape:
                     var_bin_dic[s] = {}
                     detail, IV = cal_WOE_IV(merged)
                     chi, p, dof, expFreq =\
@@ -185,7 +214,7 @@ class varBinning(Binning):
 
         else:
             if not x.dtypes.ordered:
-                self.prior_shape = 'D'
+                self.variable_shape = 'D'
             cross, cut = self._category_cross(df_set, x.name)
             cross, cut = self._lowpct_zero_merge(cross, cut)
             category_dic = self._gen_comb_bins(cross, cut)

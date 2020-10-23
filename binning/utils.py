@@ -338,7 +338,7 @@ def merge_bin_by_idx(crs, idxlist):
     return cross
 
 
-def merge_lowpct_zero(df, thrd_PCT=0.05, mthd='PCT'):
+def merge_lowpct_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
     """
     合并个数为0和占比过低的箱，不改变缺失组的结果.
 
@@ -352,7 +352,7 @@ def merge_lowpct_zero(df, thrd_PCT=0.05, mthd='PCT'):
     """
     cross = df[df.index != -1].copy(deep=True)
     s = 1
-    merge_idxs = []
+    t_cut = cut.copy()
     while s:
         row_margin = cross.sum(axis=1)
         total = row_margin.sum()
@@ -393,11 +393,23 @@ def merge_lowpct_zero(df, thrd_PCT=0.05, mthd='PCT'):
                 merge_idx = slc_min_dist(cross.loc[inf_idx: sup_idx])
 
             cross = merge_bin_by_idx(cross, [merge_idx])
-            merge_idxs.append(merge_idx)
+            t_cut = cut_adj(t_cut, [merge_idx])
         else:
             s = 0
 
-    return cross.append(df[df.index == -1]), merge_idxs
+    return cross.append(df[df.index == -1]), t_cut
+
+
+def cut_adj(cut, bin_idxs):
+    """切分点调整."""
+    if isinstance(cut, list):
+        return [x for i, x in enumerate(cut) if i not in bin_idxs]
+    elif isinstance(cut, dict):
+        t_cut = cut.copy()
+        for idx in bin_idxs[::-1]:
+            t_d = {k: v-1 for k, v in t_cut.items() if v >= idx}
+            t_cut.update(t_d)
+        return t_cut
 
 
 def merge_PCT_zero(df, cut, thrd_PCT=0.05, mthd='PCT'):
