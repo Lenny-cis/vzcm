@@ -56,9 +56,10 @@ class Entity:
 
     def __init__(self, id, df, target=None, variable_options=None):
         self.id = id
-        self.df = df
+        self.data = {'df': df, 'vops': variable_options, 'target': target}
         self.target = target
         self._create_variables(variable_options)
+        self.df = df
 
     def _create_variables(self, variable_options):
         variable_options = variable_options or {}
@@ -77,11 +78,30 @@ class Entity:
     @property
     def df(self):
         """Dataframe providing the data for the entity."""
-        return self._df.copy(deep=True)
+        return self.data['df'].copy(deep=True)
 
     @df.setter
     def df(self, t_df):
-        self._df = t_df
+        self.data['df'] = t_df
+
+    @property
+    def target(self):
+        """Target for the entity."""
+        return self.data['target']
+
+    @target.setter
+    def target(self, tg):
+        self.data['target'] = tg
+
+    @property
+    def variable_options(self):
+        """Variable_options for the entity."""
+        return self.data['vops']
+
+    @variable_options.setter
+    def variable_options(self, vops):
+        self.data['vops'] = vops
+
 
 def convert_all_variable_data(df, vartypes):
     """变量转换."""

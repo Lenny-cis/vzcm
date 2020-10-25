@@ -18,7 +18,7 @@ slc_dic = OrderedDict({'nonmissing_ratio': 0.5,
                        'iv': 0.05})
 
 
-class FeatureSelection:
+class EntitySetFeatureSelection:
     """特征筛选."""
 
     def __init__(self, entityset):
